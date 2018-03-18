@@ -12,28 +12,33 @@ Address = 24
 DataOut = 23
 Button = 7
 
+
 class TRSensor(object):
-    
+
+    thread = None
+    interrupted = False
     delay = -1
     last = -1
     
-    def __init__(self, client, serviceName, numSensors = 5, debug = False):
-        self.numSensors = numSensors
+    def __init__(self, client, service_name, num_sensors=5, debug=False):
+        self.numSensors = num_sensors
         self.calibratedMin = [0] * self.numSensors
         self.calibratedMax = [1023] * self.numSensors
         self.last_value = 0
         self.client = client
-        self.serviceName = serviceName
+        self.serviceName = service_name
         self.logger = Logger("TRSensor", debug)
 
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
-        GPIO.setup(Clock,GPIO.OUT)
-        GPIO.setup(Address,GPIO.OUT)
-        GPIO.setup(CS,GPIO.OUT)
-        GPIO.setup(DataOut,GPIO.IN,GPIO.PUD_UP)
-        GPIO.setup(Button,GPIO.IN,GPIO.PUD_UP)
+        GPIO.setup(Clock, GPIO.OUT)
+        GPIO.setup(Address, GPIO.OUT)
+        GPIO.setup(CS, GPIO.OUT)
+        GPIO.setup(DataOut, GPIO.IN, GPIO.PUD_UP)
+        GPIO.setup(Button, GPIO.IN, GPIO.PUD_UP)
 
+        self.client.publish(self.serviceName + "/state/tr/measuring", "OFF", 1, False)
+        self.client.publish(self.serviceName + "/state/tr/delay", "0", 1, False)
         self.client.message_callback_add(self.serviceName + "/control/tr/#", self.on_message)        
 
     """
@@ -47,35 +52,35 @@ class TRSensor(object):
     surface or a void).
     """
     def AnalogRead(self):
-        value = [0]*(self.numSensors+1)
-        #Read Channel0~channel6 AD value
-        for j in range(0,self.numSensors+1):
+        value = [0] * (self.numSensors + 1)
+        # Read Channel0~channel6 AD value
+        for j in range(0, self.numSensors + 1):
             GPIO.output(CS, GPIO.LOW)
-            for i in range(0,4):
-                #sent 4-bit Address
-                if(((j) >> (3 - i)) & 0x01):
-                    GPIO.output(Address,GPIO.HIGH)
+            for i in range(0, 4):
+                # sent 4-bit Address
+                if (j >> (3 - i)) & 0x01:
+                    GPIO.output(Address, GPIO.HIGH)
                 else:
-                    GPIO.output(Address,GPIO.LOW)
-                #read MSB 4-bit data
+                    GPIO.output(Address, GPIO.LOW)
+                # read MSB 4-bit data
                 value[j] <<= 1
-                if(GPIO.input(DataOut)):
+                if GPIO.input(DataOut):
                     value[j] |= 0x01
-                GPIO.output(Clock,GPIO.HIGH)
-                GPIO.output(Clock,GPIO.LOW)
-            for i in range(0,6):
-                #read LSB 8-bit data
+                GPIO.output(Clock, GPIO.HIGH)
+                GPIO.output(Clock, GPIO.LOW)
+            for i in range(0, 6):
+                # read LSB 8-bit data
                 value[j] <<= 1
-                if(GPIO.input(DataOut)):
+                if GPIO.input(DataOut):
                     value[j] |= 0x01
-                GPIO.output(Clock,GPIO.HIGH)
-                GPIO.output(Clock,GPIO.LOW)
-            #no mean ,just delay
+                GPIO.output(Clock, GPIO.HIGH)
+                GPIO.output(Clock, GPIO.LOW)
+            # no mean ,just delay
 #            for i in range(0,6):
-#                GPIO.output(Clock,GPIO.HIGH)
-#                GPIO.output(Clock,GPIO.LOW)
+#                GPIO.output(Clock, GPIO.HIGH)
+#                GPIO.output(Clock, GPIO.LOW)
             time.sleep(0.0001)
-            GPIO.output(CS,GPIO.HIGH)
+            GPIO.output(CS, GPIO.HIGH)
 #        print value[1:]
         return value[1:]
         
@@ -88,25 +93,25 @@ class TRSensor(object):
     def calibrate(self):
         max_sensor_values = [0]*self.numSensors
         min_sensor_values = [0]*self.numSensors
-        for j in range(0,10):
+        for j in range(0, 10):
         
-            sensor_values = self.AnalogRead();
+            sensor_values = self.AnalogRead()
             
-            for i in range(0,self.numSensors):
+            for i in range(0, self.numSensors):
             
                 # set the max we found THIS time
-                if((j == 0) or max_sensor_values[i] < sensor_values[i]):
+                if (j == 0) or max_sensor_values[i] < sensor_values[i]:
                     max_sensor_values[i] = sensor_values[i]
 
                 # set the min we found THIS time
-                if((j == 0) or min_sensor_values[i] > sensor_values[i]):
+                if (j == 0) or min_sensor_values[i] > sensor_values[i]:
                     min_sensor_values[i] = sensor_values[i]
 
         # record the min and max calibration values
-        for i in range(0,self.numSensors):
-            if(min_sensor_values[i] > self.calibratedMin[i]):
+        for i in range(0, self.numSensors):
+            if min_sensor_values[i] > self.calibratedMin[i]:
                 self.calibratedMin[i] = min_sensor_values[i]
-            if(max_sensor_values[i] < self.calibratedMax[i]):
+            if max_sensor_values[i] < self.calibratedMax[i]:
                 self.calibratedMax[i] = max_sensor_values[i]
 
     """
@@ -118,24 +123,24 @@ class TRSensor(object):
     """
     def readCalibrated(self):
         value = 0
-        #read the needed values
-        sensor_values = self.AnalogRead();
+        # read the needed values
+        sensor_values = self.AnalogRead()
 
-        for i in range (0,self.numSensors):
+        for i in range(0, self.numSensors):
 
             denominator = self.calibratedMax[i] - self.calibratedMin[i]
 
-            if(denominator != 0):
-                value = (sensor_values[i] - self.calibratedMin[i])* 1000 / denominator
+            if denominator != 0:
+                value = (sensor_values[i] - self.calibratedMin[i]) * 1000 / denominator
                 
-            if(value < 0):
+            if value < 0:
                 value = 0
-            elif(value > 1000):
+            elif value > 1000:
                 value = 1000
                 
             sensor_values[i] = value
         
-        #print("readCalibrated",sensor_values)
+        # print("readCalibrated",sensor_values)
         return sensor_values
             
     """
@@ -164,57 +169,62 @@ class TRSensor(object):
         avg = 0
         sum = 0
         on_line = 0
-        for i in range(0,self.numSensors):
+        for i in range(0, self.numSensors):
             value = sensor_values[i]
-            if(white_line):
+            if white_line:
                 value = 1000-value
             # keep track of whether we see the line at all
-            if(value > 200):
+            if value > 200:
                 on_line = 1
                 
             # only average in values that are above a noise threshold
-            if(value > 50):
-                avg += value * (i * 1000);  # this is for the weighted total,
-                sum += value;                  #this is for the denominator 
+            if value > 50:
+                avg += value * (i * 1000)  # this is for the weighted total,
+                sum += value               # this is for the denominator
 
-        if(on_line != 1):
+        if on_line != 1:
             # If it last read to the left of center, return 0.
-            if(self.last_value < (self.numSensors - 1)*1000/2):
-                #print("left")
-                self.last_value = 0;
+            if self.last_value < (self.numSensors - 1) * 1000 / 2:
+                # print("left")
+                self.last_value = 0
     
             # If it last read to the right of center, return the max.
             else:
-                #print("right")
+                # print("right")
                 self.last_value = (self.numSensors - 1)*1000
         else:
             self.last_value = avg/sum
         
-        return self.last_value,sensor_values
+        return self.last_value, sensor_values
 
     def on_message(self, client, userdata, msg):
         self.logger.info(msg.topic + ": " + msg.payload)
         try:
             path = msg.topic.split("/")
-            if (len(path) > 1 and path[0] == self.serviceName and path[1] == "control"): # mutinus/control/#
-                if (len(path) > 2 and path[2] == "tr"):                                  # mutinus/control/tr
-                    if (msg.payload == ""):
+            if len(path) > 1 and path[0] == self.serviceName and path[1] == "control":  # mutinus/control/#
+                if len(path) > 2 and path[2] == "tr":                                   # mutinus/control/tr
+                    if msg.payload == "":
                         data = self.AnalogRead()
-                        this.logger.info("Measuring TR: " + str(data))
+                        self.logger.info("Measuring TR: " + str(data))
                         client.publish(self.serviceName + "/state/tr", str(data), 0, False)
                     else:
-                        self.delay = -1 if (msg.payload == "OFF") else int(msg.payload)
-                        if (self.delay < 0): self.delay = -1 
-                        self.last = -1 if (self.delay < 0) else time.time() * 1000.0
+                        self.delay = 0 if (msg.payload == "OFF") else int(msg.payload)
+                        if self.delay <= 0: self.delay = 0
+                        self.client.publish(self.serviceName + "/state/tr/delay", str(self.delay), 1, False)
+                        self.last = -1 if (self.delay <= 0) else time.time() * 1000.0
                         self.logger.info("Measuring TR each " + str(self.delay) + "ms")
+                        if self.delay > 0:
+                            self.start()
+                        else:
+                            self.stop()
         except:
             self.logger.error("Unexpected Error!")
             traceback.print_exc()
    
     def looper(self):
-        while (self.interrupted == False):
+        while not self.interrupted:
             try:
-                if (self.delay > 0 and self.last > 0 and time.time() * 1000.0 - self.last > self.delay):
+                if self.delay > 0 and self.last > 0 < time.time() * 1000.0 - self.last:
                     data = self.AnalogRead()
                     self.logger.info(str(data))
                     self.client.publish(self.serviceName + "/state/tr", str(data), 0, False)
@@ -225,16 +235,21 @@ class TRSensor(object):
                 traceback.print_exc()
         self.logger.info("Exiting looper")
 
-    def start(self):
-        self.interrupted = False
-        self.thread = threading.Thread(target = self.looper)
-        self.thread.start()
+     def start(self):
+        if self.thread is None:
+            self.client.publish(self.serviceName + "/state/tr/measuring", "ON", 1, False)
+            self.interrupted= False
+            self.thread = threading.Thread(target=self.looper)
+            self.thread.start()
         return self.thread
     
     def stop(self):
         self.interrupted = True
-        if (self.thread != None): self.thread.join(5)
+        if self.thread is not None:
+            self.client.publish(self.serviceName + "/state/tr/measuring", "OFF", 1, False)
+            self.thread.join(5)
         self.thread = None
+
 
 # Simple example prints accel/mag data once per second:
 if __name__ == '__main__':
@@ -244,4 +259,3 @@ if __name__ == '__main__':
         print(TR.AnalogRead())
         time.sleep(0.2)
 
-             

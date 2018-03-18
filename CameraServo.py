@@ -1,11 +1,11 @@
 #!/usr/bin/python
 # -*- coding:utf-8 -*-
-import time
 import threading
 import traceback
 import paho.mqtt.client as mqtt
 from PCA9685 import PCA9685
 from Logger import Logger
+
 
 class CameraServo:
  
@@ -18,13 +18,9 @@ class CameraServo:
     PITCH_MAX = 2800
     PITCH_DEG = ROLL_DEG
 
-    delay = 0
-    interrupted = False
-    thread = None
-
-    def __init__(self, client, serviceName, debug=False):
+    def __init__(self, client, service_name, debug=False):
         self.client = client
-        self.serviceName = serviceName
+        self.serviceName = service_name
         self.logger = Logger("CameraServo", debug)
         
         self.pwm = PCA9685(0x40, debug)
@@ -32,80 +28,69 @@ class CameraServo:
     
         self.client.message_callback_add(self.serviceName + "/control/camera/#", self.on_message)
         
-        self.setPosition(0, self.ROLL_MID, self.ROLL_MIN, self.ROLL_MAX)
-        self.setPosition(1, self.PITCH_MID, self.PITCH_MIN, self.PITCH_MAX)
+        self.set_position(0, self.ROLL_MID, self.ROLL_MIN, self.ROLL_MAX)
+        self.set_position(1, self.PITCH_MID, self.PITCH_MIN, self.PITCH_MAX)
 
     def on_message(self, client, userdata, msg):
         self.logger.info(msg.topic + ": " + msg.payload)
         try:
             path = msg.topic.split("/")
-            if (len(path) > 1 and path[0] == self.serviceName and path[1] == "control"): # mutinus/control/#
-                if (len(path) > 2 and path[2] == "camera"):                              # mutinus/control/camera/#
+            if len(path) > 1 and path[0] == self.serviceName and path[1] == "control":  # mutinus/control/#
+                if len(path) > 2 and path[2] == "camera":                               # mutinus/control/camera/#
                     degrees = -float(msg.payload)
-                    if (len(path) > 3 and (path[3] == "roll" or path[3] == "0")):        # mutinus/control/camera/roll/#
-                        if (len(path) > 4 and path[4] == "raw"):                         # mutinus/control/camera/roll/raw
-                            self.setPosition(0, int(msg.payload), self.ROLL_MIN, self.ROLL_MAX)
-                        elif (len(path) > 4 and path[4] == "percent"):
-                            self.setPositionPercent(0, int(msg.payload), self.ROLL_MIN, self.ROLL_MAX)
-                        else:                                                            # mutinus/control/camera/roll
-                            self.setPositionDegrees(0, degrees, self.ROLL_MID, self.ROLL_MIN, self.ROLL_MAX, self.ROLL_DEG)
-                    if (len(path) > 3 and (path[3] == "pitch" or path[3] == "1")):       # mutinus/control/camera/pitch/#
-                        if (len(path) > 4 and path[4] == "raw"):                         # mutinus/control/camera/pitch/raw
-                            self.setPosition(1, int(msg.payload), self.PITCH_MIN, self.PITCH_MAX)
-                        elif (len(path) > 4 and path[4] == "percent"):
-                            self.setPositionPercent(1, int(msg.payload), self.PITCH_MIN, self.PITCH_MAX)
-                        else:                                                            # mutinus/control/camera/pitch
-                            self.setPositionDegrees(1, degrees, self.PITCH_MID, self.PITCH_MIN, self.PITCH_MAX, self.PITCH_DEG)
+                    if len(path) > 3 and (path[3] == "roll" or path[3] == "0"):         # mutinus/control/camera/0/#
+                        if len(path) > 4 and path[4] == "deg":                          # mutinus/control/camera/0/deg
+                            self.set_position_degrees(0, degrees, self.ROLL_MID, self.ROLL_MIN, self.ROLL_MAX,
+                                                      self.ROLL_DEG)
+                        elif len(path) > 4 and path[4] == "percent":
+                            self.set_position_percent(0, int(msg.payload), self.ROLL_MIN, self.ROLL_MAX)
+                        else:                                                           # mutinus/control/camera/roll
+                            self.set_position(0, int(msg.payload), self.ROLL_MIN, self.ROLL_MAX)
+                    if len(path) > 3 and (path[3] == "pitch" or path[3] == "1"):        # mutinus/control/camera/0/#
+                        if len(path) > 4 and path[4] == "deg":                          # mutinus/control/camera/0/deg
+                            self.set_position_degrees(1, degrees, self.PITCH_MID, self.PITCH_MIN, self.PITCH_MAX,
+                                                      self.PITCH_DEG)
+                        elif len(path) > 4 and path[4] == "percent":
+                            self.set_position_percent(1, int(msg.payload), self.PITCH_MIN, self.PITCH_MAX)
+                        else:                                                           # mutinus/control/camera/pitch
+                            self.set_position(1, int(msg.payload), self.PITCH_MIN, self.PITCH_MAX)
         except:
             self.logger.error("Unexpected Error!")
             traceback.print_exc()
-            
-    def setPosition(self, servo, position, min, max):
-        self.delay = 0
+
+    def roll_percent(self, percent):
+        self.set_position_percent(0, percent, self.ROLL_MIN, self.ROLL_MAX)
+
+    def pitch_percent(self, percent):
+        self.set_position_percent(1, percent, self.PITCH_MIN, self.PITCH_MAX)
+
+    def set_position(self, servo, position, position_min, position_max):
         original = position
-        if (position > max): position = max
-        if (position < min): position = min
+        if position > position_max: position = position_max
+        if position < position_min: position = position_min
         self.logger.debug(str(original) + " -> " + str(position))
 
         self.client.publish(self.serviceName + "/state/camera/" + str(servo) + "/raw", position, 0, True)
 
-        percent = 100 - int(float(position - min) * 100.0 / float(max - min))
+        percent = 100 - int(float(position - position_min) * 100.0 / float(position_max - position_min))
         self.client.publish(self.serviceName + "/state/camera/" + str(servo) + "/percent", percent, 1, True)
         
         self.pwm.setServoPulse(servo, position)
-        self.delay = time.time() * 1000.0 + 500.0
+        threading.Timer(0.5, self.stop).start()
 
-    def setPositionPercent(self, servo, percent, min, max):
-        position = min + int((100.0 - float(percent)) * float(max - min) / 100.0)
+    def set_position_percent(self, servo, percent, position_min, position_max):
+        if percent > 100: percent = 100
+        if percent < 0: percent = 0
+        position = position_min + int((100.0 - float(percent)) * float(position_max - position_min) / 100.0)
         self.logger.debug(str(percent) + "% -> " + str(position))
-        self.setPosition(servo, position, min, max)
+        self.set_position(servo, position, position_min, position_max)
 
-    def setPositionDegrees(self, servo, degrees, mid, min, max, pointsPerDegree):
-        position = int(degrees * pointsPerDegree + mid)
+    def set_position_degrees(self, servo, degrees, mid, position_min, position_max, points_per_degree):
+        position = int(degrees * points_per_degree + mid)
         self.logger.debug(str(degrees) + "deg -> " + str(position))
-        self.setPosition(servo, position, min, max)
-        
-    def looper(self):
-        while (self.interrupted == False):
-            try:
-                if (self.delay > 0 and self.delay < time.time() * 1000.0):
-                    self.logger.debug("Stopping")
-                    self.delay = 0
-                    self.pwm.stop(0)
-                    self.pwm.stop(1)
-                time.sleep(0.1)
-            except:
-                self.logger.error("Unexpected Error!")
-                traceback.print_exc()
-        self.logger.info("Exiting looper")
+        self.set_position(servo, position, position_min, position_max)
 
-    def start(self):
-        self.interrupted = False
-        self.thread = threading.Thread(target = self.looper)
-        self.thread.start()
-        return self.thread
-    
     def stop(self):
-        self.interrupted = True
-        if (self.thread != None): self.thread.join(5)
-        self.thread = None
+        self.logger.debug("Stopping")
+        self.pwm.stop(0)
+        self.pwm.stop(1)
