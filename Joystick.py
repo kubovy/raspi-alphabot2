@@ -59,30 +59,30 @@ class Joystick:
                 if len(path) > 2 and path[2] == "joystick":                             # mutinus/control/joystick/#
                     if len(path) > 3 and path[3] == "state":
                         if msg.payload == "ON":
-                            if not self.on: self.client.publish(self.serviceName + "/state/ir/state", "ON", 1, True)
+                            if not self.on: self.client.publish(self.serviceName + "/state/joystick/state", "ON", 1, True)
                             self.on = True
                             self.start()
                         else:
-                            if self.on: self.client.publish(self.serviceName + "/state/ir/state", "OFF", 1, True)
-                            if self.control != "NONE": self.client.publish(self.serviceName + "/state/ir/control", "NONE", 1, True)
+                            if self.on: self.client.publish(self.serviceName + "/state/joystick/state", "OFF", 1, True)
+                            if self.control != "NONE": self.client.publish(self.serviceName + "/state/joystick/control", "NONE", 1, True)
                             self.on = False
                             self.stop()
                     elif len(path) > 3 and path[3] == "control":
                         if msg.payload == "MOVEMENT":
-                            if not self.on: self.client.publish(self.serviceName + "/state/ir/state", "ON", 1, True)
-                            if self.control != "MOVEMENT": self.client.publish(self.serviceName + "/state/ir/control", "MOVEMENT", 1, True)
+                            if not self.on: self.client.publish(self.serviceName + "/state/joystick/state", "ON", 1, True)
+                            if self.control != "MOVEMENT": self.client.publish(self.serviceName + "/state/joystick/control", "MOVEMENT", 1, True)
                             self.on = True
                             self.control = "MOVEMENT"
                             self.start()
                         elif msg.payload == "CAMERA":
-                            if not self.on: self.client.publish(self.serviceName + "/state/ir/state", "ON", 1, True)
-                            if self.control != "CAMERA": self.client.publish(self.serviceName + "/state/ir/control", "CAMERA", 1, True)
+                            if not self.on: self.client.publish(self.serviceName + "/state/joystick/state", "ON", 1, True)
+                            if self.control != "CAMERA": self.client.publish(self.serviceName + "/state/joystick/control", "CAMERA", 1, True)
                             self.on = True
                             self.control = "CAMERA"
                             self.start()
                         else:
-                            if self.on: self.client.publish(self.serviceName + "/state/ir/state", "OFF", 1, True)
-                            if self.control != "NONE": self.client.publish(self.serviceName + "/state/ir/control", "NONE", 1, True)
+                            if self.on: self.client.publish(self.serviceName + "/state/joystick/state", "OFF", 1, True)
+                            if self.control != "NONE": self.client.publish(self.serviceName + "/state/joystick/control", "NONE", 1, True)
                             self.on = False
                             self.control = "NONE"
                             self.stop()
